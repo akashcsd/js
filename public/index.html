@@ -1,0 +1,743 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>P2P Video Call App</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.6.1/socket.io.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/simple-peer/9.11.1/simplepeer.min.js"></script>
+    <style>
+        :root {
+            --primary: #4b6bfb;
+            --primary-dark: #3a54c4;
+            --danger: #f44336;
+            --success: #4caf50;
+            --background: #f6f9fe;
+            --text: #333;
+            --border: #ddd;
+            --hover: #eaeaea;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+        }
+
+        body {
+            background-color: var(--background);
+            color: var(--text);
+            min-height: 100vh;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .header h1 {
+            font-size: 24px;
+            color: var(--primary);
+        }
+
+        .participants-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .participant-count {
+            background-color: var(--primary);
+            color: white;
+            padding: 5px 10px;
+            border-radius: 20px;
+            font-size: 14px;
+        }
+
+        .room-link {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background-color: white;
+            border: 1px solid var(--border);
+            padding: 8px 12px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+        }
+
+        .room-link input {
+            flex: 1;
+            border: none;
+            outline: none;
+            font-size: 14px;
+            color: var(--text);
+            background: transparent;
+        }
+
+        .copy-btn {
+            border: none;
+            background-color: var(--primary);
+            color: white;
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background-color 0.3s;
+        }
+
+        .copy-btn:hover {
+            background-color: var(--primary-dark);
+        }
+
+        .main-content {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 20px;
+        }
+
+        .video-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .video-container {
+            position: relative;
+            background-color: #222;
+            border-radius: 8px;
+            overflow: hidden;
+            aspect-ratio: 16/9;
+        }
+
+        .video-container.local-video {
+            border: 2px solid var(--primary);
+        }
+
+        video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .participant-info {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            background-color: rgba(0, 0, 0, 0.6);
+            color: white;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .participant-info i {
+            font-size: 16px;
+        }
+
+        .controls {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 15px;
+            padding: 15px 25px;
+            background-color: white;
+            border-radius: 50px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+            z-index: 100;
+        }
+
+        .control-btn {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            border: none;
+            background-color: var(--hover);
+            transition: all 0.3s;
+        }
+
+        .control-btn i {
+            font-size: 20px;
+        }
+
+        .control-btn:hover {
+            background-color: var(--border);
+        }
+
+        .control-btn.active {
+            background-color: var(--danger);
+            color: white;
+        }
+
+        .control-btn.end-call {
+            background-color: var(--danger);
+            color: white;
+        }
+
+        .control-btn.end-call:hover {
+            background-color: #d32f2f;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        .overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(0, 0, 0, 0.8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        .start-call-dialog {
+            background-color: white;
+            padding: 30px;
+            border-radius: 10px;
+            max-width: 400px;
+            width: 100%;
+            text-align: center;
+        }
+
+        .start-call-dialog h2 {
+            margin-bottom: 20px;
+            color: var(--primary);
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+            text-align: left;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            font-size: 16px;
+        }
+
+        .btn-primary {
+            background-color: var(--primary);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 4px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+        .btn-primary:hover {
+            background-color: var(--primary-dark);
+        }
+
+        .muted-indicator {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background-color: rgba(0, 0, 0, 0.6);
+            color: white;
+            padding: 5px;
+            border-radius: 4px;
+        }
+
+        @media (max-width: 768px) {
+            .video-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .controls {
+                padding: 10px 15px;
+            }
+            
+            .control-btn {
+                width: 40px;
+                height: 40px;
+            }
+        }
+    </style>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.1.1/css/all.min.css">
+</head>
+<body>
+    <!-- Start call overlay -->
+    <div class="overlay" id="startCallOverlay">
+        <div class="start-call-dialog">
+            <h2>Start or Join a Call</h2>
+            <div class="form-group">
+                <label for="displayName">Your Name</label>
+                <input type="text" id="displayName" placeholder="Enter your name">
+            </div>
+            <div class="form-group">
+                <label for="roomId">Room ID (leave empty to create new room)</label>
+                <input type="text" id="roomId" placeholder="Enter room ID to join">
+            </div>
+            <button id="startCallBtn" class="btn-primary">Start Call</button>
+        </div>
+    </div>
+
+    <!-- Main app container -->
+    <div class="container">
+        <div class="header">
+            <h1>P2P Video Call</h1>
+            <div class="participants-info">
+                <div class="participant-count">
+                    <span id="participantCount">1</span> participant(s)
+                </div>
+            </div>
+        </div>
+
+        <div class="room-link hidden" id="roomLinkContainer">
+            <input type="text" id="roomLinkInput" readonly>
+            <button class="copy-btn" id="copyLinkBtn">
+                <i class="fas fa-copy"></i> Copy
+            </button>
+        </div>
+
+        <div class="main-content">
+            <div class="video-grid" id="videoGrid">
+                <!-- Local video will be added here -->
+            </div>
+        </div>
+    </div>
+
+    <div class="controls hidden" id="controls">
+        <button class="control-btn" id="toggleAudioBtn">
+            <i class="fas fa-microphone"></i>
+        </button>
+        <button class="control-btn" id="toggleVideoBtn">
+            <i class="fas fa-video"></i>
+        </button>
+        <button class="control-btn end-call" id="endCallBtn">
+            <i class="fas fa-phone-slash"></i>
+        </button>
+    </div>
+
+    <script>
+        // Global variables
+        let socket;
+        let localStream;
+        let peers = {};
+        let roomId;
+        let localName;
+        let audioEnabled = true;
+        let videoEnabled = true;
+
+        // DOM elements
+        const startCallOverlay = document.getElementById('startCallOverlay');
+        const startCallBtn = document.getElementById('startCallBtn');
+        const displayNameInput = document.getElementById('displayName');
+        const roomIdInput = document.getElementById('roomId');
+        const videoGrid = document.getElementById('videoGrid');
+        const controls = document.getElementById('controls');
+        const toggleAudioBtn = document.getElementById('toggleAudioBtn');
+        const toggleVideoBtn = document.getElementById('toggleVideoBtn');
+        const endCallBtn = document.getElementById('endCallBtn');
+        const participantCount = document.getElementById('participantCount');
+        const roomLinkContainer = document.getElementById('roomLinkContainer');
+        const roomLinkInput = document.getElementById('roomLinkInput');
+        const copyLinkBtn = document.getElementById('copyLinkBtn');
+
+        // Initialize the application
+        function init() {
+            // Connect to signaling server
+            socket = io();
+            
+            // Setup socket events
+            setupSocketEvents();
+            
+            // Initial event listeners
+            startCallBtn.addEventListener('click', startCall);
+            toggleAudioBtn.addEventListener('click', toggleAudio);
+            toggleVideoBtn.addEventListener('click', toggleVideo);
+            endCallBtn.addEventListener('click', endCall);
+            copyLinkBtn.addEventListener('click', copyRoomLink);
+        }
+
+        // Set up socket event listeners
+        function setupSocketEvents() {
+            // When connected to the signaling server
+            socket.on('connect', () => {
+                console.log('Connected to signaling server');
+            });
+
+            // When receiving an offer from a peer
+            socket.on('user-joined', ({ userId, userData }) => {
+                console.log('User joined:', userId, userData);
+                connectToPeer(userId, userData, false);
+                updateParticipantCount();
+            });
+
+            // When receiving an offer from a peer
+            socket.on('offer', handleOffer);
+
+            // When receiving an answer from a peer
+            socket.on('answer', handleAnswer);
+
+            // When receiving an ICE candidate from a peer
+            socket.on('ice-candidate', handleIceCandidate);
+
+            // When a user disconnects
+            socket.on('user-disconnected', ({ userId }) => {
+                console.log('User disconnected:', userId);
+                if (peers[userId]) {
+                    peers[userId].destroy();
+                    delete peers[userId];
+                    
+                    const videoElement = document.getElementById(`video-${userId}`);
+                    if (videoElement) {
+                        const container = videoElement.closest('.video-container');
+                        if (container) {
+                            container.remove();
+                        }
+                    }
+                    
+                    updateParticipantCount();
+                }
+            });
+
+            // When room data is received after joining
+            socket.on('room-data', ({ participants }) => {
+                console.log('Room data:', participants);
+                
+                // Connect to all existing participants
+                for (const [userId, userData] of Object.entries(participants)) {
+                    if (userId !== socket.id) {
+                        connectToPeer(userId, userData, true);
+                    }
+                }
+                
+                updateParticipantCount();
+            });
+            
+            // Handle errors
+            socket.on('error', (data) => {
+                console.error('Socket error:', data.message);
+                alert('Error: ' + data.message);
+            });
+        }
+
+        // Start the call - get user media and join/create room
+        async function startCall() {
+            localName = displayNameInput.value.trim() || 'Anonymous';
+            const inputRoomId = roomIdInput.value.trim();
+            
+            try {
+                // Get user media
+                localStream = await navigator.mediaDevices.getUserMedia({
+                    video: true,
+                    audio: true
+                });
+                
+                // Create local video element
+                createVideoElement(localStream, socket.id, localName, true);
+                
+                // Show controls
+                startCallOverlay.classList.add('hidden');
+                controls.classList.remove('hidden');
+                
+                // Join or create room
+                if (inputRoomId) {
+                    roomId = inputRoomId;
+                    socket.emit('join-room', { roomId, userData: { name: localName } });
+                } else {
+                    // Generate random room ID
+                    roomId = generateRoomId();
+                    socket.emit('create-room', { roomId, userData: { name: localName } });
+                }
+                
+                // Show and update room link
+                roomLinkContainer.classList.remove('hidden');
+                const roomLink = `${window.location.origin}?room=${roomId}`;
+                roomLinkInput.value = roomLink;
+                
+                console.log("Call started, overlay should be hidden now");
+            } catch (error) {
+                console.error('Error accessing media devices:', error);
+                alert('Could not access camera or microphone. Please check permissions.');
+            }
+        }
+
+        // Connect to a new peer
+        function connectToPeer(peerId, peerData, initiator) {
+            console.log(`Connecting to peer ${peerId}, initiator: ${initiator}`);
+            
+            // Create a new peer connection
+            const peer = new SimplePeer({
+                initiator,
+                stream: localStream,
+                trickle: true,
+                config: {
+                    iceServers: [
+                        { urls: 'stun:stun.l.google.com:19302' },
+                        { urls: 'stun:global.stun.twilio.com:3478' }
+                    ]
+                }
+            });
+            
+            // Store the peer connection
+            peers[peerId] = peer;
+            
+            // Handle peer events
+            peer.on('signal', data => {
+                if (data.type === 'offer') {
+                    socket.emit('offer', { targetId: peerId, senderId: socket.id, signal: data });
+                } else if (data.type === 'answer') {
+                    socket.emit('answer', { targetId: peerId, senderId: socket.id, signal: data });
+                } else if (data.candidate) {
+                    socket.emit('ice-candidate', { targetId: peerId, senderId: socket.id, candidate: data });
+                }
+            });
+            
+            peer.on('stream', stream => {
+                console.log('Received stream from peer:', peerId);
+                createVideoElement(stream, peerId, peerData.name || 'Unknown', false);
+            });
+            
+            peer.on('error', err => {
+                console.error('Peer connection error:', err);
+            });
+            
+            return peer;
+        }
+
+        // Handle an offer from a peer
+        function handleOffer({ senderId, signal, senderData }) {
+            console.log('Received offer from:', senderId);
+            
+            // Create peer if it doesn't exist
+            if (!peers[senderId]) {
+                const peer = connectToPeer(senderId, senderData, false);
+                peer.signal(signal);
+            } else {
+                peers[senderId].signal(signal);
+            }
+        }
+
+        // Handle an answer from a peer
+        function handleAnswer({ senderId, signal }) {
+            console.log('Received answer from:', senderId);
+            
+            if (peers[senderId]) {
+                peers[senderId].signal(signal);
+            }
+        }
+
+        // Handle an ICE candidate from a peer
+        function handleIceCandidate({ senderId, candidate }) {
+            console.log('Received ICE candidate from:', senderId);
+            
+            if (peers[senderId]) {
+                peers[senderId].signal(candidate);
+            }
+        }
+
+        // Create a video element for a stream
+        function createVideoElement(stream, userId, userName, isLocal) {
+            const videoContainer = document.createElement('div');
+            videoContainer.className = 'video-container';
+            videoContainer.id = `container-${userId}`;
+            
+            if (isLocal) {
+                videoContainer.classList.add('local-video');
+            }
+            
+            const video = document.createElement('video');
+            video.id = `video-${userId}`;
+            video.srcObject = stream;
+            video.autoplay = true;
+            if (isLocal) {
+                video.muted = true;
+            }
+            video.playsInline = true;
+            
+            const participantInfo = document.createElement('div');
+            participantInfo.className = 'participant-info';
+            participantInfo.innerHTML = `
+                <i class="fas fa-user"></i>
+                <span>${userName}${isLocal ? ' (You)' : ''}</span>
+            `;
+            
+            // Add muted indicators
+            const audioMutedIndicator = document.createElement('div');
+            audioMutedIndicator.className = 'muted-indicator hidden';
+            audioMutedIndicator.id = `audio-muted-${userId}`;
+            audioMutedIndicator.innerHTML = '<i class="fas fa-microphone-slash"></i>';
+            
+            const videoMutedIndicator = document.createElement('div');
+            videoMutedIndicator.className = 'muted-indicator hidden';
+            videoMutedIndicator.id = `video-muted-${userId}`;
+            videoMutedIndicator.innerHTML = '<i class="fas fa-video-slash"></i>';
+            
+            videoContainer.appendChild(video);
+            videoContainer.appendChild(participantInfo);
+            videoContainer.appendChild(audioMutedIndicator);
+            videoContainer.appendChild(videoMutedIndicator);
+            
+            videoGrid.appendChild(videoContainer);
+            
+            updateParticipantCount();
+            return video;
+        }
+
+        // Toggle audio
+        function toggleAudio() {
+            audioEnabled = !audioEnabled;
+            
+            // Update local stream tracks
+            localStream.getAudioTracks().forEach(track => {
+                track.enabled = audioEnabled;
+            });
+            
+            // Update button state
+            toggleAudioBtn.innerHTML = audioEnabled ? 
+                '<i class="fas fa-microphone"></i>' : 
+                '<i class="fas fa-microphone-slash"></i>';
+            
+            toggleAudioBtn.classList.toggle('active', !audioEnabled);
+            
+            // Show/hide muted indicator
+            const audioMutedIndicator = document.getElementById(`audio-muted-${socket.id}`);
+            if (audioMutedIndicator) {
+                audioMutedIndicator.classList.toggle('hidden', audioEnabled);
+            }
+            
+            // Notify other peers about audio state
+            socket.emit('media-state-change', {
+                roomId,
+                mediaType: 'audio',
+                enabled: audioEnabled
+            });
+        }
+
+        // Toggle video
+        function toggleVideo() {
+            videoEnabled = !videoEnabled;
+            
+            // Update local stream tracks
+            localStream.getVideoTracks().forEach(track => {
+                track.enabled = videoEnabled;
+            });
+            
+            // Update button state
+            toggleVideoBtn.innerHTML = videoEnabled ? 
+                '<i class="fas fa-video"></i>' : 
+                '<i class="fas fa-video-slash"></i>';
+            
+            toggleVideoBtn.classList.toggle('active', !videoEnabled);
+            
+            // Show/hide muted indicator
+            const videoMutedIndicator = document.getElementById(`video-muted-${socket.id}`);
+            if (videoMutedIndicator) {
+                videoMutedIndicator.classList.toggle('hidden', videoEnabled);
+            }
+            
+            // Notify other peers about video state
+            socket.emit('media-state-change', {
+                roomId,
+                mediaType: 'video',
+                enabled: videoEnabled
+            });
+        }
+
+        // End the call
+        function endCall() {
+            // Stop all tracks
+            if (localStream) {
+                localStream.getTracks().forEach(track => track.stop());
+            }
+            
+            // Close all peer connections
+            for (const peerId in peers) {
+                peers[peerId].destroy();
+            }
+            peers = {};
+            
+            // Leave room
+            socket.emit('leave-room', { roomId });
+            
+            // Reset UI
+            videoGrid.innerHTML = '';
+            controls.classList.add('hidden');
+            roomLinkContainer.classList.add('hidden');
+            startCallOverlay.classList.remove('hidden');
+            
+            // Reset inputs
+            displayNameInput.value = '';
+            roomIdInput.value = '';
+        }
+
+        // Copy room link to clipboard
+        function copyRoomLink() {
+            roomLinkInput.select();
+            document.execCommand('copy');
+            
+            // Show feedback
+            copyLinkBtn.innerHTML = '<i class="fas fa-check"></i> Copied!';
+            setTimeout(() => {
+                copyLinkBtn.innerHTML = '<i class="fas fa-copy"></i> Copy';
+            }, 2000);
+        }
+
+        // Generate a random room ID
+        function generateRoomId() {
+            return Math.random().toString(36).substring(2, 10);
+        }
+
+        // Check URL for room ID parameter
+        function checkUrlForRoomId() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const roomParam = urlParams.get('room');
+            
+            if (roomParam) {
+                roomIdInput.value = roomParam;
+            }
+        }
+
+        // Update participant count
+        function updateParticipantCount() {
+            const count = document.querySelectorAll('.video-container').length;
+            participantCount.textContent = count;
+        }
+
+        // Call the init function when the page loads
+        window.addEventListener('load', () => {
+            init();
+            checkUrlForRoomId();
+        });
+    </script>
+</body>
+</html>
